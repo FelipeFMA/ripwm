@@ -1,0 +1,39 @@
+[package]
+name = "ripwm"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+tracing-subscriber = { version = "0.3.16", features = ["env-filter"] }
+tracing = "0.1"
+bitflags = "2.11.0"
+xcursor = "0.3.3"
+smithay-drm-extras = { version = "0.1.0", default-features = false }
+
+[dependencies.smithay]
+version = "0.7.0"
+default-features = false
+features = [
+    "backend_winit",
+    "backend_drm",
+    "backend_egl",
+    "backend_gbm",
+    "backend_libinput",
+    "backend_session_libseat",
+    "backend_udev",
+    "backend_vulkan",
+    "renderer_gl",
+    "renderer_multi",
+    "renderer_pixman",
+    "wayland_frontend",
+    "desktop",
+]
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = "symbols"
+debug = 0
+incremental = false
