@@ -1,9 +1,10 @@
 use smithay::{
-    delegate_xdg_shell,
+    delegate_xdg_decoration, delegate_xdg_shell,
     desktop::{
         PopupKind, PopupManager, Space, Window, find_popup_root_surface, get_popup_toplevel_coords,
     },
     reexports::{
+        wayland_protocols::xdg::decoration::zv1::server::zxdg_toplevel_decoration_v1::Mode,
         wayland_protocols::xdg::shell::server::xdg_toplevel,
         wayland_server::protocol::{wl_seat, wl_surface::WlSurface},
     },
@@ -12,7 +13,7 @@ use smithay::{
         compositor::with_states,
         shell::xdg::{
             PopupSurface, PositionerState, ToplevelSurface, XdgShellHandler, XdgShellState,
-            XdgToplevelSurfaceData,
+            XdgToplevelSurfaceData, decoration::XdgDecorationHandler,
         },
     },
 };
@@ -79,6 +80,21 @@ impl XdgShellHandler for Smallvil {
 }
 delegate_xdg_shell!(Smallvil);
 
+impl XdgDecorationHandler for Smallvil {
+    fn new_decoration(&mut self, toplevel: ToplevelSurface) {
+        self.set_server_side_decoration_mode(toplevel);
+    }
+
+    fn request_mode(&mut self, toplevel: ToplevelSurface, _mode: Mode) {
+        self.set_server_side_decoration_mode(toplevel);
+    }
+
+    fn unset_mode(&mut self, toplevel: ToplevelSurface) {
+        self.set_server_side_decoration_mode(toplevel);
+    }
+}
+delegate_xdg_decoration!(Smallvil);
+
 pub fn handle_commit(popups: &mut PopupManager, space: &Space<Window>, surface: &WlSurface) {
     if let Some(window) =
         space.elements().find(|w| w.toplevel().unwrap().wl_surface() == surface).cloned()
@@ -112,6 +128,14 @@ pub fn handle_commit(popups: &mut PopupManager, space: &Space<Window>, surface: 
 }
 
 impl Smallvil {
+    fn set_server_side_decoration_mode(&mut self, toplevel: ToplevelSurface) {
+        toplevel.with_pending_state(|state| {
+            state.decoration_mode = Some(Mode::ServerSide);
+        });
+        toplevel.send_configure();
+        self.request_redraw_all();
+    }
+
     fn unconstrain_popup(&self, popup: &PopupSurface) {
         let Ok(root) = find_popup_root_surface(&PopupKind::Xdg(popup.clone())) else {
             return;
