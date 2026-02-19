@@ -2,9 +2,9 @@
 
 mod handlers;
 
+mod config;
 mod cursor;
 mod drawing;
-mod grabs;
 mod input;
 mod state;
 mod udev;

@@ -35,6 +35,10 @@ impl SeatHandler for Smallvil {
         let dh = &self.display_handle;
         let client = focused.and_then(|s| dh.get_client(s.id()).ok());
         set_data_device_focus(dh, seat, client);
+
+        self.active_surface = focused.cloned();
+        self.arrange_windows_tiled();
+        self.request_redraw_all();
     }
 }
 

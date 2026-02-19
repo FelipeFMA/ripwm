@@ -174,7 +174,6 @@ impl Smallvil {
                         .element_under(pointer.current_location())
                         .map(|(w, l)| (w.clone(), l))
                     {
-                        self.space.raise_element(&window, true);
                         let Some(toplevel) = window.toplevel() else {
                             tracing::warn!("Window without toplevel cannot receive focus");
                             pointer.button(
@@ -189,20 +188,13 @@ impl Smallvil {
                             pointer.frame(self);
                             return;
                         };
+                        self.active_surface = Some(toplevel.wl_surface().clone());
                         keyboard.set_focus(self, Some(toplevel.wl_surface().clone()), serial);
-                        self.space.elements().for_each(|window| {
-                            if let Some(toplevel) = window.toplevel() {
-                                toplevel.send_pending_configure();
-                            }
-                        });
+                        self.arrange_windows_tiled();
                     } else {
-                        self.space.elements().for_each(|window| {
-                            window.set_activated(false);
-                            if let Some(toplevel) = window.toplevel() {
-                                toplevel.send_pending_configure();
-                            }
-                        });
+                        self.active_surface = None;
                         keyboard.set_focus(self, Option::<WlSurface>::None, serial);
+                        self.arrange_windows_tiled();
                     }
                 }
 

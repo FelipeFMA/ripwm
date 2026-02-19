@@ -3,7 +3,9 @@ use std::time::Duration;
 use smithay::{
     backend::{
         renderer::{
-            damage::OutputDamageTracker, element::surface::WaylandSurfaceRenderElement,
+            ImportAll, ImportMem, damage::OutputDamageTracker,
+            element::memory::MemoryRenderBufferRenderElement,
+            element::solid::SolidColorRenderElement, element::surface::WaylandSurfaceRenderElement,
             gles::GlesRenderer,
         },
         winit::{self, WinitEvent},
@@ -14,6 +16,13 @@ use smithay::{
 };
 
 use crate::Smallvil;
+
+smithay::backend::renderer::element::render_elements! {
+    pub WinitOutputRenderElements<R, E> where R: ImportAll + ImportMem;
+    Space=smithay::desktop::space::SpaceRenderElements<R, E>,
+    Wallpaper=MemoryRenderBufferRenderElement<R>,
+    Border=SolidColorRenderElement,
+}
 
 pub fn init_winit(
     event_loop: &EventLoop<Smallvil>,
@@ -43,6 +52,7 @@ pub fn init_winit(
     event_loop.handle().insert_source(winit, move |event, (), state| match event {
         WinitEvent::Resized { size, .. } => {
             output.change_current_state(Some(Mode { size, refresh: 60_000 }), None, None, None);
+            state.arrange_windows_tiled();
         }
         WinitEvent::Input(event) => state.process_input_event(event),
         WinitEvent::Redraw => {
@@ -58,21 +68,54 @@ pub fn init_winit(
                     }
                 };
 
-                if let Err(err) = smithay::desktop::space::render_output::<
-                    _,
-                    WaylandSurfaceRenderElement<GlesRenderer>,
-                    _,
-                    _,
-                >(
+                let mut elements: Vec<
+                    WinitOutputRenderElements<
+                        GlesRenderer,
+                        WaylandSurfaceRenderElement<GlesRenderer>,
+                    >,
+                > = Vec::new();
+
+                let space_elements = match smithay::desktop::space::space_render_elements(
+                    renderer,
+                    [&state.space],
                     &output,
+                    1.0,
+                ) {
+                    Ok(elements) => elements,
+                    Err(err) => {
+                        tracing::error!("Failed to collect render elements: {err}");
+                        return;
+                    }
+                };
+
+                if let Some(output_geo) = state.space.output_geometry(&output) {
+                    let border_elements = crate::drawing::tiled_border_elements(
+                        output_geo,
+                        &state.space,
+                        state.active_surface.as_ref(),
+                        state.active_border_color,
+                        state.inactive_border_color,
+                        state.border_width,
+                    );
+                    elements
+                        .extend(border_elements.into_iter().map(WinitOutputRenderElements::Border));
+                }
+
+                elements.extend(space_elements.into_iter().map(WinitOutputRenderElements::Space));
+
+                if let Some(mode) = output.current_mode()
+                    && let Some(wallpaper_element) =
+                        state.wallpaper.render_element(renderer, mode.size)
+                {
+                    elements.push(WinitOutputRenderElements::Wallpaper(wallpaper_element));
+                }
+
+                if let Err(err) = damage_tracker.render_output(
                     renderer,
                     &mut framebuffer,
-                    1.0,
                     0,
-                    [&state.space],
-                    &[],
-                    &mut damage_tracker,
-                    [0.1, 0.1, 0.1, 1.0],
+                    &elements,
+                    [0.0, 0.0, 0.0, 1.0],
                 ) {
                     tracing::error!("Failed to render output: {err}");
                     return;

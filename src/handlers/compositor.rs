@@ -1,4 +1,4 @@
-use crate::{Smallvil, grabs::resize_grab, state::ClientState};
+use crate::{Smallvil, state::ClientState};
 use smithay::{
     backend::renderer::utils::on_commit_buffer_handler,
     delegate_compositor, delegate_shm,
@@ -28,6 +28,8 @@ impl CompositorHandler for Smallvil {
     }
 
     fn commit(&mut self, surface: &WlSurface) {
+        let before_count = self.space.elements().count();
+
         on_commit_buffer_handler::<Self>(surface);
         if !is_sync_subsurface(surface) {
             let mut root = surface.clone();
@@ -42,7 +44,12 @@ impl CompositorHandler for Smallvil {
         }
 
         xdg_shell::handle_commit(&mut self.popups, &self.space, surface);
-        resize_grab::handle_commit(&mut self.space, surface);
+
+        self.space.refresh();
+        let after_count = self.space.elements().count();
+        if before_count != after_count {
+            self.arrange_windows_tiled();
+        }
 
         if self.udev.is_some() {
             self.request_redraw_all();

@@ -16,7 +16,11 @@ use smithay::{
         renderer::{
             ImportAll, ImportMem,
             element::surface::WaylandSurfaceRenderElement,
-            element::{AsRenderElements, memory::MemoryRenderBuffer},
+            element::{
+                AsRenderElements,
+                memory::{MemoryRenderBuffer, MemoryRenderBufferRenderElement},
+                solid::SolidColorRenderElement,
+            },
             gles::GlesRenderer,
             multigpu::{GpuManager, MultiRenderer, gbm::GbmGlesBackend},
         },
@@ -39,7 +43,9 @@ use crate::{Smallvil, drawing::PointerElement};
 
 smithay::backend::renderer::element::render_elements! {
     pub UdevOutputRenderElements<R, E> where R: ImportAll + ImportMem;
+    Wallpaper=MemoryRenderBufferRenderElement<R>,
     Space=smithay::desktop::space::SpaceRenderElements<R, E>,
+    Border=SolidColorRenderElement,
     Pointer=crate::drawing::PointerRenderElement<R>,
 }
 
@@ -370,6 +376,7 @@ impl Smallvil {
 
         device.surfaces.insert(crtc, SurfaceData { output, drm_output });
 
+        self.arrange_windows_tiled();
         self.render_surface(node, crtc);
     }
 
@@ -389,6 +396,7 @@ impl Smallvil {
 
         if let Some(surface) = device.surfaces.remove(&crtc) {
             self.space.unmap_output(&surface.output);
+            self.arrange_windows_tiled();
             self.space.refresh();
         }
     }
@@ -425,22 +433,30 @@ impl Smallvil {
     }
 
     fn device_removed(&mut self, node: DrmNode) {
-        let Some(udev) = self.udev.as_mut() else {
-            return;
-        };
+        let registration_token = {
+            let Some(udev) = self.udev.as_mut() else {
+                return;
+            };
 
-        let Some(mut device) = udev.backends.remove(&node) else {
-            return;
-        };
+            let Some(mut device) = udev.backends.remove(&node) else {
+                return;
+            };
 
-        let crtcs: Vec<_> = device.surfaces.keys().copied().collect();
-        for crtc in crtcs {
-            if let Some(surface) = device.surfaces.remove(&crtc) {
-                self.space.unmap_output(&surface.output);
+            let crtcs: Vec<_> = device.surfaces.keys().copied().collect();
+            for crtc in crtcs {
+                if let Some(surface) = device.surfaces.remove(&crtc) {
+                    self.space.unmap_output(&surface.output);
+                }
             }
-        }
 
-        udev.handle.remove(device.registration_token);
+            device.registration_token
+        };
+
+        self.arrange_windows_tiled();
+
+        if let Some(udev) = self.udev.as_mut() {
+            udev.handle.remove(registration_token);
+        }
     }
 
     fn frame_finish(
@@ -529,6 +545,10 @@ impl Smallvil {
                     WaylandSurfaceRenderElement<UdevRenderer<'_>>,
                 >,
             > = Vec::new();
+            let wallpaper_element = surface
+                .output
+                .current_mode()
+                .and_then(|mode| self.wallpaper.render_element(&mut renderer, mode.size));
 
             let frame = udev.pointer_image.get_image(1, self.start_time.elapsed());
             let pointer_image = udev
@@ -606,7 +626,21 @@ impl Smallvil {
                 );
             }
 
+            let border_elements = crate::drawing::tiled_border_elements(
+                output_geometry,
+                &self.space,
+                self.active_surface.as_ref(),
+                self.active_border_color,
+                self.inactive_border_color,
+                self.border_width,
+            );
+            elements.extend(border_elements.into_iter().map(UdevOutputRenderElements::Border));
+
             elements.extend(space_elements.into_iter().map(UdevOutputRenderElements::Space));
+
+            if let Some(wallpaper_element) = wallpaper_element {
+                elements.push(UdevOutputRenderElements::Wallpaper(wallpaper_element));
+            }
 
             let is_empty = match surface.drm_output.render_frame(
                 &mut renderer,

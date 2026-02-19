@@ -4,11 +4,14 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-tracing-subscriber = { version = "0.3.16", features = ["env-filter"] }
-tracing = "0.1"
+tracing-subscriber = { version = "0.3.22", features = ["env-filter"] }
+tracing = "0.1.44"
 bitflags = "2.11.0"
-xcursor = "0.3.3"
+xcursor = "0.3.10"
 smithay-drm-extras = { version = "0.1.0", default-features = false }
+serde = { version = "1.0.228", features = ["derive"] }
+toml = "0.9.8"
+image = { version = "0.25.9", default-features = false, features = ["png", "jpeg", "webp", "gif", "bmp", "tiff"] }
 
 [dependencies.smithay]
 version = "0.7.0"
