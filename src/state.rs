@@ -71,8 +71,13 @@ impl Smallvil {
         let mut seat_state = SeatState::new();
         let mut seat: Seat<Self> = seat_state.new_wl_seat(&dh, "winit");
 
-        if let Err(err) = seat.add_keyboard(smithay::input::keyboard::XkbConfig::default(), 200, 25)
-        {
+        let xkb_config = smithay::input::keyboard::XkbConfig {
+            layout: &config.keyboard_layout,
+            variant: &config.keyboard_variant,
+            ..Default::default()
+        };
+
+        if let Err(err) = seat.add_keyboard(xkb_config, 200, 25) {
             tracing::error!("Failed to add keyboard to seat: {err}");
         }
 
@@ -194,10 +199,39 @@ impl Smallvil {
             return;
         }
 
-        match command.trim() {
-            "reload" => self.reload_config(),
-            other => tracing::warn!("Unknown IPC command: {other}"),
+        let command = command.trim();
+
+        if command == "reload" {
+            self.reload_config();
+            return;
         }
+
+        if let Some(layout_args) = command.strip_prefix("keyboard ") {
+            let mut parts = layout_args.splitn(2, ' ');
+            let Some(layout) = parts.next().map(str::trim).filter(|part| !part.is_empty()) else {
+                tracing::warn!("Invalid keyboard IPC command, missing layout");
+                return;
+            };
+            let variant = parts.next().map(str::trim).unwrap_or("");
+
+            let xkb_config =
+                smithay::input::keyboard::XkbConfig { layout, variant, ..Default::default() };
+
+            match self.seat.add_keyboard(xkb_config, 200, 25) {
+                Ok(_) => {
+                    tracing::info!(
+                        "Updated keyboard layout via IPC: layout={layout}, variant={variant}"
+                    );
+                }
+                Err(err) => {
+                    tracing::error!("Failed to update keyboard layout via IPC: {err}");
+                }
+            }
+
+            return;
+        }
+
+        tracing::warn!("Unknown IPC command: {command}");
     }
 
     pub fn reload_config(&mut self) {
@@ -205,6 +239,16 @@ impl Smallvil {
         self.wallpaper = crate::config::WallpaperState::from_config(&config);
         self.active_border_color = config.active_border_color;
         self.inactive_border_color = config.inactive_border_color;
+
+        let xkb_config = smithay::input::keyboard::XkbConfig {
+            layout: &config.keyboard_layout,
+            variant: &config.keyboard_variant,
+            ..Default::default()
+        };
+
+        if let Err(err) = self.seat.add_keyboard(xkb_config, 200, 25) {
+            tracing::error!("Failed to update keyboard layout: {err}");
+        }
 
         self.arrange_windows_tiled();
 

@@ -28,6 +28,10 @@ wallpaper = off
 # Border colors in #RRGGBB or #RRGGBBAA format
 active_border_color = "#4c7899"
 inactive_border_color = "#2f343a"
+
+# Keyboard configuration
+keyboard_layout = "us"
+keyboard_variant = ""
 "##;
 
 #[derive(Debug, Clone)]
@@ -41,6 +45,8 @@ pub struct RipwmConfig {
     pub wallpaper: WallpaperSetting,
     pub active_border_color: [f32; 4],
     pub inactive_border_color: [f32; 4],
+    pub keyboard_layout: String,
+    pub keyboard_variant: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -51,6 +57,10 @@ struct RawConfig {
     active_border_color: String,
     #[serde(default = "default_inactive_border_color")]
     inactive_border_color: String,
+    #[serde(default = "default_keyboard_layout")]
+    keyboard_layout: String,
+    #[serde(default = "default_keyboard_variant")]
+    keyboard_variant: String,
 }
 
 impl Default for RawConfig {
@@ -59,6 +69,8 @@ impl Default for RawConfig {
             wallpaper: default_wallpaper(),
             active_border_color: default_active_border_color(),
             inactive_border_color: default_inactive_border_color(),
+            keyboard_layout: default_keyboard_layout(),
+            keyboard_variant: default_keyboard_variant(),
         }
     }
 }
@@ -73,6 +85,14 @@ fn default_active_border_color() -> String {
 
 fn default_inactive_border_color() -> String {
     String::from("#2f343a")
+}
+
+fn default_keyboard_layout() -> String {
+    String::from("us")
+}
+
+fn default_keyboard_variant() -> String {
+    String::from("")
 }
 
 pub fn load_or_create_config() -> RipwmConfig {
@@ -121,7 +141,20 @@ pub fn load_or_create_config() -> RipwmConfig {
         "inactive_border_color",
     );
 
-    RipwmConfig { wallpaper, active_border_color, inactive_border_color }
+    let keyboard_layout = raw.keyboard_layout.trim();
+    let keyboard_layout = if keyboard_layout.is_empty() {
+        default_keyboard_layout()
+    } else {
+        keyboard_layout.to_string()
+    };
+
+    RipwmConfig {
+        wallpaper,
+        active_border_color,
+        inactive_border_color,
+        keyboard_layout,
+        keyboard_variant: raw.keyboard_variant.trim().to_string(),
+    }
 }
 
 pub(crate) fn config_path() -> PathBuf {
